@@ -9,7 +9,8 @@ output: html_document
 
 ##import libraries and breast cancer single cell experiment
 ```{r}
-
+library(MASS)
+library(ComplexHeatmap)
 library(imcdatasets)
 library(imcRtools)
 
@@ -43,12 +44,10 @@ interactions <- testInteractions(subset,
                         method = "classic",
                         colPairName = "knn_interaction_graph")
 
-subset <- interactions[,c("group_by","from_label","to_label","ct")]
-interactions_image <- split(subset[,c("from_label","to_label","ct")],subset$group_by)
+interactions_ct <- interactions[,c("group_by","from_label","to_label","ct")]
+interactions_per_image <- split(interactions_ct[,c("from_label","to_label","ct")],interactions_ct$group_by)
 
-interaction_matrix <- lapply(interactions_image,function(x){
-  as.matrix(subset(reshape(x, idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
-})
+interaction_matrix <-as.matrix(subset(reshape(interactions_per_image[[1]], idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
 ```
 
 ## do same analysis for all images
@@ -71,6 +70,10 @@ out <- testInteractions(sce,
                         label = "metacluster",
                         method = "classic",
                         colPairName = "knn_interaction_graph")
+```
+
+```{r}
+out$ct[is.na(out$ct)] <- 0
 
 sub_out <- out[,c("group_by","from_label","to_label","ct")]
 out_image <- split(sub_out[,c("from_label","to_label","ct")],sub_out$group_by)
@@ -78,4 +81,14 @@ out_image <- split(sub_out[,c("from_label","to_label","ct")],sub_out$group_by)
 sigval_matrix <- lapply(out_image,function(x){
   as.matrix(subset(reshape(x, idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
 })
+```
+
+```{r}
+
+ct_sum <- Reduce("+", sigval_matrix)
+rownames(ct_sum) <- unique(out$from_label)
+colnames(ct_sum) <- unique(out$from_label)
+Heatmap(ct_sum, cluster_rows = FALSE, cluster_columns = FALSE)
+
+write.matrix(ct_sum, file="C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",sep=",")
 ```
