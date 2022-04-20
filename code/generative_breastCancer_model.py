@@ -4,17 +4,22 @@ Created on Thu Apr 14 16:04:19 2022
 
 @author: User
 """
-delay = 500
+delay = 0
 
 #libraries
 import pygame
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
 from numpy.random import default_rng as rng
 import seaborn as sns
 
 #global variables
 ##create color list and background colors
+R = np.linspace(0,255,27, dtype=int)
+G = np.linspace(0,255,27, dtype=int)
+B = np.linspace(0,255,27, dtype=int)
+
 outer = []
 for i in range(1,28):
     inner = []
@@ -92,11 +97,12 @@ def generate_markov(cells):
                     return
                 else:
                     break
-    if cells.ani:  
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                return
+    if cells.ani:
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
     else:
         return
    
@@ -217,24 +223,96 @@ def new_start(cells):
 
 
 
-def update_mle():
-    pass
-    #go through every cell in matrix
-    # for x, y in np.ndindex(cells.states.shape):
-    #     current_state = cells.states[x,y]
-    #     random = np.random.random()
-    #     #decide new state depending on transition matrix
-    #     for i,prob in enumerate(cells.transition_matrix[current_state-1]):
-    #         if random < prob:
-    #             new_state = i + 1
-    #             break
-    #     #set new state
-    #     cells.states[x,y] = new_state
-    #     #animation would better be moved to class method but this way less loops
-    #     if cells.ani:
-    #         pygame.draw.rect(cells.surface,cells.color[cells.states[x,y]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+def generate_neighborhood(cells):
+    
+    #initiate all states to a random cell type
+    cells.states = np.random.randint(1,cells.number_celltype+1,(cells.dimy,cells.dimx))
+    
+    if cells.ani:
+        for y,row in enumerate(cells.states):
+            for x,state in enumerate(row):
+                pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1)) 
+        pygame.display.update()
+    
+    #todo: take a look at convolution
+    #go though all cells and compute neighbors celltype probablity vector
+    converging = True
+    counter = 0
+    while converging:
+        #creat a x*y*celltypes matrix
+        probs = np.zeros((cells.dimx,cells.dimy,cells.number_celltype))
 
-
+        #add probablity vectors
+        for y,row in enumerate(cells.states):
+            for x,state in enumerate(row):
+                left = max(x-1,0)
+                right = min(cells.dimx+1,x+2)
+                upper = max(y-1,0)
+                lower = min(cells.dimy+1,y+2)
+                  
+                #create neighborhood filter
+                cond = np.full(np.shape(cells.states),False)
+                cond[upper:lower,left:right] = True
+                cond[y,x] = False
+                
+                #choose prbability vector according to cell state in x,y
+                v = cells.interactions[state-1]
+                
+                #add probablity vector to neighboring cells
+                probs[cond,:] += v
+    
+            
+        #update cells.state with new probablity matrix
+        changes = False
+        for y,row in enumerate(cells.states):
+            for x,state in enumerate(row):
+                prob_vector = probs[y,x,:]
+                #normalize probablity vector and compute cumulative sum
+                prob_vector = prob_vector/np.sum(prob_vector)
+                prob_vector = np.cumsum(prob_vector,dtype=float)
+                
+                # (deterministic) #choose most likely cell type
+                # new_state = np.argmax(prob_vector) + 1
+                
+                #choose state probabilistically
+                random = np.random.random()
+                for i,prob in enumerate(prob_vector):
+                    if random < prob:
+                        new_state = i + 1
+                        break
+                #if changed
+                if new_start != state:
+                    #assign new cell state
+                    cells.states[y,x] = new_state
+                    changes = True
+                                
+                #animation would better be moved to class method but this way less loops
+                if cells.ani:
+                    pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1)) 
+                    pygame.time.delay(delay)
+                    pygame.display.update()
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            pygame.quit()
+                            return
+                        else:
+                            break
+        #if no more changes are happening
+        if not changes:
+            print("converged")
+            converging = False
+        #no convergence after x iterations
+        if counter == 10:
+            print(f"no convergence after {counter} iterations")
+            converging = False
+        counter+=1
+        
+    if cells.ani:
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
 #classes
 class Board():
     
@@ -246,13 +324,12 @@ class Board():
         self.color = outer
         self.ani = False
         self.states = np.zeros((self.dimx,self.dimy),dtype=int)
-                
-        self.transition_matrix = transition_matrix
-        #use diagonal matrix for testing
-        # self.transition_matrix = diag_matrix
+        
+        self.interactions = transition_matrix
+        self.transition_matrix = np.ones_like(self.interactions)
         
         #normalize transition matrix so values add to 1
-        for i,row in enumerate(self.transition_matrix):
+        for i,row in enumerate(self.interactions):
             norm_row = row/np.sum(row)
             #generate cumulative sum
             cum_sum = np.cumsum(norm_row,dtype=float)
@@ -278,15 +355,31 @@ def animation(board,generate_func=generate_markov):
     generate_func(board)
 
 
-def generate(board,update_func=generate_markov):
-    pass
+def generate(board,generate_func=generate_markov,plot=False):
+    generate_func(board)
+    if plot == True:
+        fig, ax = plt.subplots()
+        cmap = cm.get_cmap(name='Reds')
+        ax.imshow(board.states, cmap = "tab20b", origin = "lower")
+
+
+
 
 def main():
-    #todo: separate animation from class
-    #todo: separate simulation from class
     ct_interactions = np.genfromtxt("C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",delimiter=",",skip_header=True)
-    b = Board(10,10,transition_matrix=ct_interactions,cellsize=100)
-    animation(b)
+    dimx, dimy = 80,80
+    cellsize=1000/dimx
+    
+    #use random walk and markov for computation
+    # a = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # animation(a)
+    # b = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # generate(b,plot=True)
+
+    c = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # generate(c,generate_func=generate_neighborhood,plot=True)
+    animation(c,generate_func=generate_neighborhood)
+
 
 if __name__ == "__main__":
     main()
