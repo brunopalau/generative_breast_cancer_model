@@ -20,6 +20,7 @@ R = np.linspace(0,255,27, dtype=int)
 G = np.linspace(0,255,27, dtype=int)
 B = np.linspace(0,255,27, dtype=int)
 
+np.random.seed(4)
 outer = []
 for i in range(1,28):
     inner = []
