@@ -108,6 +108,69 @@ def generate_markov(cells):
     else:
         return
 
+def generate_best_start(cells):
+    '''
+    update cell state according to transition matrix with interaction frequencies,
+    using the whole spatial information of the positionj with the most neighbors
+    '''
+    
+    #put in first cell
+    total_states = cells.dimx * cells.dimy
+    y,x = np.argwhere(cells.states==0)[np.random.randint(0,total_states)]
+    cells.states[y,x] = np.random.randint(1,cells.number_celltype+1)
+    #animate first cell if needed
+    if cells.ani:
+        pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+        pygame.display.update()
+            
+    #random walk till all states are non-zero
+    while len(np.argwhere(cells.states == 0)) > 0:
+        
+        y,x = best_start(cells)
+        #assign new position value according to transition matrix
+        #take all spatial neighbors into account
+        neig = neighbors(cells, x, y)
+
+        #create probablity vector for this cell
+        count_neig = 0
+        prob_v = np.zeros_like(cells.transition_matrix[0,:])
+        for s in neig:
+            if s == 0:
+                continue
+            else:
+                prob_v += cells.transition_matrix[s-1]
+                count_neig += 1
+        #normalize probablity vector
+        prob_v = prob_v/count_neig
+                
+        #choose state
+        random = np.random.random()
+        for i,prob in enumerate(prob_v):
+            if random < prob:
+                new_state = i + 1
+                break
+        cells.states[y,x] = new_state
+        
+        
+        if cells.ani:
+            pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+            pygame.time.delay(delay)
+            pygame.display.update()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+                else:
+                    break
+    if cells.ani:
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+    else:
+        return
+    
 def generate_conv(cells):
     '''
     update cell state according to transition matrix with interaction frequencies,
@@ -130,7 +193,7 @@ def generate_conv(cells):
         possible_moves = open_neighbors(cells,x,y)
         #if no moves possible from position x,y then search for new position
         if len(possible_moves) == 0:
-            new_y,_new_x = best_start(cells)
+            new_y,new_x = best_start(cells)
             print(f"new start at: {new_y},{new_x}")
             #if no moves possible with best_start we are finished
             if new_y == -1:
@@ -476,9 +539,13 @@ def main():
     # animation(c,generate_func=generate_neighborhood)
 
     #use 8 spatial neighbors to determine state
-    d = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
-    animation(d,generate_func=generate_conv)
-    # generate(d,plot=True,generate_func=generate_markov)
+    # d = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # animation(d,generate_func=generate_conv)
+    # generate(d,plot=True,generate_func=generate_conv)
+    
+    e = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # animation(e,generate_func=generate_best_start)
+    generate(e,plot=True,generate_func=generate_best_start)
 
 if __name__ == "__main__":
     main()
