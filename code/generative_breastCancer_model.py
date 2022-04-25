@@ -4,7 +4,7 @@ Created on Thu Apr 14 16:04:19 2022
 
 @author: User
 """
-delay = 0
+delay = 50
 
 #libraries
 import pygame
@@ -13,6 +13,7 @@ import matplotlib.cm as cm
 import numpy as np
 from numpy.random import default_rng as rng
 import seaborn as sns
+from scipy.ndimage import convolve as conv
 
 #global variables
 ##create color list and background colors
@@ -106,7 +107,86 @@ def generate_markov(cells):
                     return
     else:
         return
-   
+
+def generate_conv(cells):
+    '''
+    update cell state according to transition matrix with interaction frequencies,
+    using the whole spatial information
+    '''
+    
+    #put in first cell
+    total_states = cells.dimx * cells.dimy
+    y,x = np.argwhere(cells.states==0)[np.random.randint(0,total_states)]
+    cells.states[y,x] = np.random.randint(1,cells.number_celltype+1)
+    #animate first cell if needed
+    if cells.ani:
+        pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+        pygame.display.update()
+        
+    last_state = cells.states[y,x]
+    
+    #random walk till all states are non-zero
+    while len(np.argwhere(cells.states == 0)) > 0:
+        possible_moves = open_neighbors(cells,x,y)
+        #if no moves possible from position x,y then search for new position
+        if len(possible_moves) == 0:
+            new_y,_new_x = best_start(cells)
+            print(f"new start at: {new_y},{new_x}")
+            #if no moves possible with best_start we are finished
+            if new_y == -1:
+                break
+        else:    
+            #choose one of the possible moves
+            delta_y, delta_x = possible_moves[np.random.randint(0,len(possible_moves))]
+            
+            #compute new position
+            new_x, new_y = x+delta_x, y+delta_y
+            
+        #assign new position value according to transition matrix
+        #take all spatial neighbors into account
+        neig = neighbors(cells, new_x, new_y)
+
+        #create probablity vector for this cell
+        count_neig = 0
+        prob_v = np.zeros_like(cells.transition_matrix[0,:])
+        for s in neig:
+            if s == 0:
+                continue
+            else:
+                prob_v += cells.transition_matrix[s-1]
+                count_neig += 1
+        #normalize probablity vector
+        prob_v = prob_v/count_neig
+                
+        #choose state
+        random = np.random.random()
+        for i,prob in enumerate(prob_v):
+            if random < prob:
+                new_state = i + 1
+                break
+        cells.states[new_y,new_x] = new_state
+        
+        #update current state and value
+        x,y = new_x,new_y
+        
+        if cells.ani:
+            pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+            pygame.time.delay(delay)
+            pygame.display.update()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+                else:
+                    break
+    if cells.ani:
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+    else:
+        return
         
 def open_neighbors(cells,x,y):    
     #compute possible moves at position x,y in cells.state    
@@ -148,52 +228,33 @@ def open_neighbors(cells,x,y):
     else:
         return possible_moves
 
-def neighbors(cells,x,y):
-    #compute possible moves at position x,y in cells.state    
-    positions = np.array([[[y-1,x-1],[y-1,x],[y-1,x+1]],
-              [[y,x-1],[x,y],[y,x+1]],
-              [[y+1,x-1],[y+1,x],[y+1,x+1]]])
-    
-    left_bound = x-1
-    left = 0
-    right_bound = x+2
-    right = 3
-    upper_bound = y-1
-    upper = 0
-    lower_bound = y+2
-    lower = 3
-    #check if at right or left boundary
-    if x == cells.dimx-1:
-        right_bound = x+1
-        right -=1
-    elif x == 0:
-        left_bound = 0
-        left +=1
-    #check if at upper or lower boundary
-    if y == cells.dimy-1:
-        lower_bound = y+1
-        lower -=1
-    elif y == 0:
-        upper_bound = 0
-        upper +=1
-    
-    neig = cells.states[upper_bound:lower_bound,left_bound:right_bound]
-    positions = positions[upper:lower,left:right]
-    open_pos = neig != 0
-    possible_moves = positions[open_pos]
-    
-    #no possible moves
-    if not possible_moves.any():
-        return []
-    else:
-        return possible_moves
+def best_start(cells):
+
+    kernel = [[1,1,1],
+              [1,0,1],
+              [1,1,1]]
+    defined_positions = np.array(cells.states!=0,dtype=int)
+    neig_count = conv(defined_positions,kernel,mode="constant",cval=0)
+    #only consider unused spaces
+    neig_count[cells.states!=0] = -1
+    #max number of neigbors
+    maxi = np.max(neig_count)
+    #if -1 then no open positions left
+    if maxi == -1:
+        return -1,-1
+    #consider only positions with the most amount of information given
+    open_pos = np.argwhere(neig_count==maxi)
+    #choose one of the neighbors randomly and continue walk
+    new_y,new_x = open_pos[np.random.randint(0,len(open_pos))]
+   
+    return new_y,new_x
     
 def new_start(cells):
     open_pos = np.argwhere(cells.states==0)
-    new_y,new_x = open_pos[np.random.randint(0,len(open_pos))]
-    neig = neighbors(cells, new_x, new_y)
-    #if no neighbors around
     #todo:choose new start-point with neigbors to continue chain
+    new_y,new_x = open_pos[np.random.randint(0,len(open_pos))]
+    neig = open_neighbors(cells, new_x, new_y)
+    #if no neighbors around
     if len(neig) == 0:
         cells.states[new_y,new_x] = np.random.randint(1,cells.number_celltype+1)
         last_state = cells.states[new_y,new_x]
@@ -222,6 +283,35 @@ def new_start(cells):
     print(f"new start at: {x},{y} with state {last_state}")
     return y,x,last_state
 
+def neighbors(cells,x,y):
+    #compute state of neighbors at position x,y in cells.state    
+
+    left_bound = x-1
+    left = 0
+    right_bound = x+2
+    right = 3
+    upper_bound = y-1
+    upper = 0
+    lower_bound = y+2
+    lower = 3
+    #check if at right or left boundary
+    if x == cells.dimx-1:
+        right_bound = x+1
+        right -=1
+    elif x == 0:
+        left_bound = 0
+        left +=1
+    #check if at upper or lower boundary
+    if y == cells.dimy-1:
+        lower_bound = y+1
+        lower -=1
+    elif y == 0:
+        upper_bound = 0
+        upper +=1
+    
+    neig = cells.states[upper_bound:lower_bound,left_bound:right_bound]
+    states = neig.flatten()
+    return states
 
 
 def generate_neighborhood(cells):
@@ -238,8 +328,9 @@ def generate_neighborhood(cells):
     #todo: take a look at convolution
     #go though all cells and compute neighbors celltype probablity vector
     converging = True
-    counter = 0
+    iterations = 0
     while converging:
+        counter = 0
         #creat a x*y*celltypes matrix
         probs = np.zeros((cells.dimx,cells.dimy,cells.number_celltype))
 
@@ -284,6 +375,7 @@ def generate_neighborhood(cells):
                 #if changed
                 if new_start != state:
                     #assign new cell state
+                    counter += 1
                     cells.states[y,x] = new_state
                     changes = True
                                 
@@ -298,15 +390,16 @@ def generate_neighborhood(cells):
                             return
                         else:
                             break
+        print(f"changes made: {counter}")
         #if no more changes are happening
         if not changes:
             print("converged")
             converging = False
         #no convergence after x iterations
-        if counter == 10:
-            print(f"no convergence after {counter} iterations")
+        if iterations == 100:
+            print(f"no convergence after {iterations} iterations")
             converging = False
-        counter+=1
+        iterations+=1
         
     if cells.ani:
         while True:
@@ -368,7 +461,7 @@ def generate(board,generate_func=generate_markov,plot=False):
 
 def main():
     ct_interactions = np.genfromtxt("C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",delimiter=",",skip_header=True)
-    dimx, dimy = 80,80
+    dimx, dimy = 60,60
     cellsize=1000/dimx
     
     #use random walk and markov for computation
@@ -376,11 +469,16 @@ def main():
     # animation(a)
     # b = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
     # generate(b,plot=True)
+    
+    #use neighborhood to compute state    
+    # c = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # # generate(c,generate_func=generate_neighborhood,plot=True)
+    # animation(c,generate_func=generate_neighborhood)
 
-    c = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
-    # generate(c,generate_func=generate_neighborhood,plot=True)
-    animation(c,generate_func=generate_neighborhood)
-
+    #use 8 spatial neighbors to determine state
+    d = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    animation(d,generate_func=generate_conv)
+    # generate(d,plot=True,generate_func=generate_markov)
 
 if __name__ == "__main__":
     main()
