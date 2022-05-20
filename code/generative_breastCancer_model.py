@@ -10,6 +10,8 @@ delay = 50
 import pygame
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from matplotlib import colors
+
 import numpy as np
 from numpy.random import default_rng as rng
 import seaborn as sns
@@ -21,7 +23,7 @@ R = np.linspace(0,255,27, dtype=int)
 G = np.linspace(0,255,27, dtype=int)
 B = np.linspace(0,255,27, dtype=int)
 
-np.random.seed(4)
+#np.random.seed(4)
 outer = []
 for i in range(1,28):
     inner = []
@@ -38,6 +40,10 @@ meta_clusters = {1:"B cell",2:"T & B cells",3:"T cell",4:"Macrophage",5:"T cell"
                  16:"Proliferative",17:"p53+ EGFR+",18:"Basal CK",19:"CK7+ CK hi Ecadh hi",20:"CK7+",
                  21:"Epithelial low",22:"CK lo HR lo",23:"CK+ HR hi",24:"CK+ HR+",25:"CK+ HR lo",
                  26:"CK lo HR hi p53+",27:"Myoepithelial"}
+colors_list = ["#F8766D" ,"#EE8045" ,"#E28900" ,"#D39200" ,"#C19B00" ,"#ACA300" ,"#93AA00" ,"#73B000" ,"#41B500",
+          "#00BA38" ,"#00BD63" ,"#00C083" ,"#00C19F" ,"#00C0B9" ,"#00BECF" ,"#00B9E3" ,"#00B2F4" ,"#00A8FF",
+          "#619CFF" ,"#998EFF" ,"#BF80FF" ,"#DB72FB" ,"#EE67EC" ,"#FA62DA" ,"#FF61C3" ,"#FF66AA" ,"#FF6C91"]
+color_dic = {key+1:val for key,val in enumerate(colors_list)}
 
 ##create diagonal matrix for testing
 v = np.ones(27)
@@ -47,7 +53,7 @@ diag_matrix = np.diag(v)
 #update functions
 def generate_markov(cells):
     '''
-    update cell state according to transition matrix with interaction frequencies
+    update cell state according to transition matrix with interaction frequencies (only last state)
     '''
     #put in first cell
     total_states = cells.dimx * cells.dimy
@@ -111,7 +117,7 @@ def generate_markov(cells):
 def generate_best_start(cells):
     '''
     update cell state according to transition matrix with interaction frequencies,
-    using the whole spatial information of the positionj with the most neighbors
+    using the whole spatial information of the position with the most neighbors
     '''
     
     #put in first cell
@@ -378,7 +384,19 @@ def neighbors(cells,x,y):
 
 
 def generate_neighborhood(cells):
-    
+    '''
+    Update Cell states all at once in discrete timesteps
+
+    Parameters
+    ----------
+    cells : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
     #initiate all states to a random cell type
     cells.states = np.random.randint(1,cells.number_celltype+1,(cells.dimy,cells.dimx))
     
@@ -459,7 +477,7 @@ def generate_neighborhood(cells):
             print("converged")
             converging = False
         #no convergence after x iterations
-        if iterations == 100:
+        if iterations == 10:
             print(f"no convergence after {iterations} iterations")
             converging = False
         iterations+=1
@@ -470,10 +488,95 @@ def generate_neighborhood(cells):
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     return
+                
+
+def mcmc(cells):
+    if len(cells.total_freq) == 0:
+        raise Warning("total frequency matrix needed")
+    #put in first cell
+    total_states = cells.dimx * cells.dimy
+    y,x = np.argwhere(cells.states==0)[np.random.randint(0,total_states)]
+    #choose start according to frequency?
+    cells.states[y,x] = np.random.randint(1,cells.number_celltype+1)
+    
+    #animate first cell if needed
+    if cells.ani:
+        pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+        pygame.display.update()
+        
+    while len(np.argwhere(cells.states == 0)) > 0:
+        last_state = cells.states[y,x]
+        #chose random neighbor
+        possible_moves = open_neighbors(cells,x,y)
+        #if no moves possible from position x,y then search for new position
+        if len(possible_moves) == 0:
+            y,x,last_state = new_start(cells)
+            possible_moves = open_neighbors(cells,x,y)
+            #if no moves possible with new start we go back to start and check if there are still open positions
+            if len(possible_moves) == 0:
+                continue
+            
+        #choose one of the possible moves
+        delta_y, delta_x = possible_moves[np.random.randint(0,len(possible_moves))]
+        
+        #compute new position
+        new_x, new_y = x+delta_x, y+delta_y
+        
+        #generate proposed state
+        random = np.random.random()
+        for i,prob in enumerate(cells.transition_matrix[last_state-1]):
+            if random <= prob:
+                proposed_state = i + 1
+                break
+        #compute transition probablity
+        #take all spatial neighbors into account
+        neig = neighbors(cells, new_x, new_y)
+
+        #create probablity vector for this cell
+        count_neig = 0
+        prob_v = np.zeros_like(cells.transition_matrix[0,:])
+        for s in neig:
+            if s == 0:
+                continue
+            else:
+                prob_v += cells.transition_matrix[s-1]
+                count_neig += 1
+        #normalize probablity vector
+        prob_v = prob_v/count_neig
+        
+        #compute acceptance probability
+        A = (cells.total_freq[proposed_state-1] * prob_v[proposed_state-1]) / (cells.total_freq[last_state-1] * cells.transition_matrix[proposed_state-1][last_state-1])
+        if A < np.random.random():
+            cells.states[new_y,new_x] = last_state
+            x,y = new_x,new_y
+
+        else:
+            cells.states[new_y,new_x] = proposed_state
+            x,y = new_x,new_y
+
+        if cells.ani:
+            pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
+            pygame.time.delay(delay)
+            pygame.display.update()
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+                else:
+                    break
+    if cells.ani:
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    return
+    else:
+        return
+                
 #classes
 class Board():
     
-    def __init__(self,dimx,dimy,transition_matrix,number_celltype=27,cellsize=8,iterations=100):
+    def __init__(self,dimx,dimy,transition_matrix,total_freq=[],number_celltype=27,cellsize=8,iterations=100):
         self.dimx = dimx
         self.dimy = dimy
         self.cellsize = cellsize
@@ -481,7 +584,7 @@ class Board():
         self.color = outer
         self.ani = False
         self.states = np.zeros((self.dimx,self.dimy),dtype=int)
-        
+        self.total_freq = total_freq
         self.interactions = transition_matrix
         self.transition_matrix = np.ones_like(self.interactions)
         
@@ -491,6 +594,10 @@ class Board():
             #generate cumulative sum
             cum_sum = np.cumsum(norm_row,dtype=float)
             self.transition_matrix[i] = cum_sum
+        if len(total_freq) != 0:
+            #cum frquency matrix
+            cum_sum = np.cumsum(self.total_freq,dtype=float)
+            self.total_freq = cum_sum
 
 
 #animation function   
@@ -513,17 +620,22 @@ def animation(board,generate_func=generate_markov):
 
 
 def generate(board,generate_func=generate_markov,plot=False):
+    cmap = colors.ListedColormap(colors_list)
+    bounds=list(range(1,27))
+    norm = colors.BoundaryNorm(bounds, cmap.N)
+
     generate_func(board)
     if plot == True:
         fig, ax = plt.subplots()
-        cmap = cm.get_cmap(name='Reds')
-        ax.imshow(board.states, cmap = "tab20b", origin = "lower")
+        img = ax.imshow(board.states, cmap = cmap, origin = "lower")
+        # img.colorbar(img,cmap=cmap,norm=norm, boundaries=bounds)
 
 
 
 
 def main():
     ct_interactions = np.genfromtxt("C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",delimiter=",",skip_header=True)
+    total_freq = np.genfromtxt("C:/Users/User/Desktop/data/cellular_automata_bio394/total_freq.csv",delimiter=",")
     dimx, dimy = 60,60
     cellsize=1000/dimx
     
@@ -543,9 +655,10 @@ def main():
     # animation(d,generate_func=generate_conv)
     # generate(d,plot=True,generate_func=generate_conv)
     
-    e = Board(dimx,dimy,transition_matrix=ct_interactions,cellsize=cellsize)
+    # use monte carlo markov chain
+    e = Board(dimx,dimy,transition_matrix=ct_interactions,total_freq = total_freq,cellsize=cellsize)
     # animation(e,generate_func=generate_best_start)
-    generate(e,plot=True,generate_func=generate_best_start)
+    generate(e,plot=True,generate_func=mcmc)
 
 if __name__ == "__main__":
     main()

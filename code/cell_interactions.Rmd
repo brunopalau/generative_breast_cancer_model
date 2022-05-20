@@ -14,6 +14,8 @@ library(ComplexHeatmap)
 library(imcdatasets)
 library(imcRtools)
 
+library(scales)
+
 sce <- JacksonFischer2020Data(data_type = "sce")
 ```
 
@@ -34,6 +36,10 @@ plotSpatial(subset,
             colPairName = "knn_interaction_graph",
             directed = FALSE,
             nodes_first = FALSE)
+```
+```{r}
+hex_codes2 <- hue_pal()(27)                             # Identify hex codes
+show_col(hex_codes2)
 ```
 #compute interactions between metaclusters
 ```{r}
@@ -91,4 +97,12 @@ colnames(ct_sum) <- unique(out$from_label)
 Heatmap(ct_sum, cluster_rows = FALSE, cluster_columns = FALSE)
 
 write.matrix(ct_sum, file="C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",sep=",")
+```
+##count total frequency of cell type
+```{r}
+total_frq <- proportions(table(sce$metacluster))
+total_freq <- as.matrix(total_frq)
+write.matrix(total_freq, file="C:/Users/User/Desktop/data/cellular_automata_bio394/total_freq.csv",sep=",")
+
+
 ```
