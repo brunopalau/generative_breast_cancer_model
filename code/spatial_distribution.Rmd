@@ -1,0 +1,80 @@
+---
+title: "spatial_distribution"
+author: "BrunoPalau"
+date: "`r Sys.Date()`"
+output: html_document
+---
+#Analyse the spatial distribution of cells in breast cancer tissue
+
+##import libraries and breast cancer single cell experiment
+```{r,include=FALSE}
+library(MASS)
+library(ComplexHeatmap)
+library(imcdatasets)
+library(imcRtools)
+library(Giotto)
+
+library(dplyr)
+library(viridis)
+
+library(scales)
+library(ggplot2)
+
+sce <- JacksonFischer2020Data(data_type = "sce")
+```
+
+##subset and build spatial graph
+```{r}
+
+subset <- sce[,sce$ImageNb == 29]
+
+#use 8 neighbors to simulate nearest 8 neighbors on grid
+subset <- buildSpatialGraph(subset, img_id = "ImageNb",
+                            coords=c("Location_Center_X", "Location_Center_Y"),     
+                            type = "knn",
+                            k = 8)
+subset$metacluster <- as.factor(subset$metacluster)
+
+# take subset for visualization
+plotSpatial(subset,
+            img_id = "ImageNb",
+            coords=c("Location_Center_X", "Location_Center_Y"),
+            node_color_by = "metacluster",
+            draw_edges = TRUE,
+            colPairName = "knn_interaction_graph",
+            directed = FALSE,
+            nodes_first = FALSE)
+```
+
+```{r}
+raw_exprs <- assay(subset,"exprs")
+spatial_locs <- data.frame(x_location=subset$Location_Center_X,y_location=subset$Location_Center_Y)
+cell_metadata <- subset$CellType
+custom_expr <- assay(subset,"exprs")
+# create giotto-object
+giotto_object <- createGiottoObject(raw_exprs = raw_exprs,
+                                  spatial_locs = spatial_locs,
+                                  cell_metadata = cell_metadata,
+                                  custom_expr = custom_expr)
+```
+
+
+```{r}
+giotto_object = createSpatialKNNnetwork(giotto_object,k=8,name="knn_network")
+
+graph_df <- giotto_object@spatial_network$knn_network$networkDT
+
+spatial_df <- data.frame(x = subset$Location_Center_X, y = subset$Location_Center_Y, metacluster = subset$metacluster)
+```
+
+
+```{r}
+# spatial distribution seems to be binmial in the sense that it is either empty or 
+ggplot(spatial_df,aes(x=x,y=y))+
+  geom_bin2d(bins=50)+
+  scale_fill_continuous(type="viridis")+
+  theme_bw()
+
+# todo: get bins calculated and make histogram of that for multiple images in dataset
+# todo: make a colored version of this to see if one metacluster is overrepresented in 
+```
