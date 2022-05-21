@@ -80,7 +80,7 @@ ggplot(spatial_df,aes(x=x,y=y))+
   scale_fill_continuous(type="viridis")+
   facet_wrap(~metacluster)+
   theme_bw()
-# specially cluster 25 seems to have some kind of spatial distriburion
+# specially cluster 25 and 18 seems to have some kind of spatial distriburion
 
 # todo: get bins calculated and make histogram of that for multiple images in dataset
 # todo: make a colored version of this to see if one metacluster is overrepresented in 
