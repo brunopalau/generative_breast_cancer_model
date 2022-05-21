@@ -8,26 +8,30 @@ output: html_document
 #Quantify Interactions between celltypes in breast cancer tissue to use it in generative model
 
 ##import libraries and breast cancer single cell experiment
-```{r}
+```{r,include=FALSE}
 library(MASS)
 library(ComplexHeatmap)
 library(imcdatasets)
 library(imcRtools)
 
 library(scales)
+library(viridis)
+library(circlize)
 
 sce <- JacksonFischer2020Data(data_type = "sce")
 ```
 
 ##subset and build spatial graph
 ```{r}
-subset <- sce[,sce$ImageNb == 29]
 #use 8 neighbors to simulate nearest 8 neighbors on grid
-subset <- buildSpatialGraph(subset, img_id = "ImageNb",
+sce <- buildSpatialGraph(sce, img_id = "ImageNb",
                             coords=c("Location_Center_X", "Location_Center_Y"),     
                             type = "knn",
                             k = 8)
-subset$metacluster <- as.factor(subset$metacluster)
+sce$metacluster <- as.factor(sce$metacluster)
+
+# take subset for visualization
+subset <- sce[,sce$ImageNb == 29]
 plotSpatial(subset,
             img_id = "ImageNb",
             coords=c("Location_Center_X", "Location_Center_Y"),
@@ -44,7 +48,7 @@ show_col(hex_codes2)
 #compute interactions between metaclusters
 ```{r}
 
-interactions <- testInteractions(subset,
+interactions <- testInteractions(sce,
                         group_by = "ImageNb",
                         label = "metacluster",
                         method = "classic",
@@ -53,56 +57,43 @@ interactions <- testInteractions(subset,
 interactions_ct <- interactions[,c("group_by","from_label","to_label","ct")]
 interactions_per_image <- split(interactions_ct[,c("from_label","to_label","ct")],interactions_ct$group_by)
 
-interaction_matrix <-as.matrix(subset(reshape(interactions_per_image[[1]], idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
-```
-
-## do same analysis for all images
-```{r}
-sce <- buildSpatialGraph(sce, img_id = "ImageNb",
-                            coords=c("Location_Center_X", "Location_Center_Y"),     
-                            type = "knn",
-                            k = 8)
-sce$metacluster <- as.factor(sce$metacluster)
-plotSpatial(sce,
-            img_id = "ImageNb",
-            coords=c("Location_Center_X", "Location_Center_Y"),
-            node_color_by = "metacluster",
-            draw_edges = TRUE,
-            colPairName = "knn_interaction_graph",
-            directed = FALSE,
-            nodes_first = FALSE)
-out <- testInteractions(sce,
-                        group_by = "ImageNb",
-                        label = "metacluster",
-                        method = "classic",
-                        colPairName = "knn_interaction_graph")
-```
-
-```{r}
-out$ct[is.na(out$ct)] <- 0
-
-sub_out <- out[,c("group_by","from_label","to_label","ct")]
-out_image <- split(sub_out[,c("from_label","to_label","ct")],sub_out$group_by)
-
-sigval_matrix <- lapply(out_image,function(x){
-  as.matrix(subset(reshape(x, idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
+ct_matrix <- lapply(interactions_per_image, function(x){
+  z <- as.matrix(subset(reshape(x, idvar="from_label",timevar = "to_label", direction = "wide"),select=-c(1)))
+  z[is.na(z)] <- 0
+  return (z)
 })
+
 ```
 
+
 ```{r}
+meta_clusters_name = c("B cell","T & B cells","T cell","Macrophage","T cell",
+                 "Macrophage","Endothelial","Vimentin hi","Small circular","Small elongated",
+                 "Fibronectin hi","Large elongated","SMA hi Vimentin hi","Hypoxic","Apoptotic",
+                 "Proliferative","p53+ EGFR+","Basal CK","CK7+ CK hi Ecadh hi","CK7+",
+                 "Epithelial low","CK lo HR lo","CK+ HR hi","CK+ HR+","CK+ HR lo",
+                 "CK lo HR hi p53+","Myoepithelial")
+col_fun <- colorRamp2(c(0,0.2,0.4,0.6,0.8,1),viridis(6))
 
-ct_sum <- Reduce("+", sigval_matrix)
-rownames(ct_sum) <- unique(out$from_label)
-colnames(ct_sum) <- unique(out$from_label)
-Heatmap(ct_sum, cluster_rows = FALSE, cluster_columns = FALSE)
+ct_sum <- Reduce("+", ct_matrix)
+rownames(ct_sum) <- meta_clusters_name
+colnames(ct_sum) <- meta_clusters_name
+#normalize values
 
-write.matrix(ct_sum, file="C:/Users/User/Desktop/data/cellular_automata_bio394/ct_interactions_knn8.csv",sep=",")
+norm_interaction <- (ct_sum-min(ct_sum))/(max(ct_sum) - min(ct_sum))
+
+Heatmap(norm_interaction, cluster_rows = FALSE, cluster_columns = FALSE,col = col_fun,column_title = "Breast Cancer tissue",
+                  heatmap_legend_param = list(title = "interaction strength", at = c(1,0,0.2,0.4,0.6,0.8),
+                                                   labels = c("total overlap", "no overlap","0.2","0.4","0.6","0.8")))
+
+
+write.matrix(norm_interaction, file="/Users/bp/data/cellular_automata_bio394/ct_interactions_knn8.csv",sep=",")
 ```
 ##count total frequency of cell type
 ```{r}
 total_frq <- proportions(table(sce$metacluster))
 total_freq <- as.matrix(total_frq)
-write.matrix(total_freq, file="C:/Users/User/Desktop/data/cellular_automata_bio394/total_freq.csv",sep=",")
+write.matrix(total_freq, file="/Users/bp/data/cellular_automata_bio394/total_freq.csv",sep=",")
 
 
 ```
