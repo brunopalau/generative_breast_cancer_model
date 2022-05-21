@@ -15,6 +15,8 @@ library(imcdatasets)
 library(imcRtools)
 library(Giotto)
 
+library(dplyr)
+
 library(scales)
 library(ggplot2)
 
@@ -95,15 +97,21 @@ graph_df$meta_both<- as.vector(list_both)
 # make plot for assumption on how distances between cells are distributed -> normally distributed, binomial distributed
 ggplot(graph_df,aes(x=distance)) + 
   geom_histogram(bins=100)
+# binomial distribution seems to come from 25, maybe 
 
 ggplot(graph_df,aes(x=distance)) + 
   geom_histogram(bins=30)
 ```
 
 ```{r}
+
 # is there difference for celltypes?
 ggplot(graph_df,aes(x=distance,fill=meta_from)) + 
-  geom_histogram(bins=100)
+  geom_histogram(bins=100,alpha=0.9)
+
+ggplot(graph_df,aes(x=distance,fill=meta_from)) + 
+  geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
+  facet_grid(~meta_from)
 
 ggplot(graph_df,aes(x=meta_from,y=distance,fill=meta_from))+
   geom_boxplot()
@@ -114,9 +122,14 @@ anova(anova_from)
 ```
 
 ```{r}
+
 # to and from are different even tho undirected graph as knn not symmetrical
 ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
-  geom_histogram(bins=100)
+  geom_histogram(bins=100,alpha=0.9)
+
+ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
+  geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
+  facet_grid(~meta_to)
 
 ggplot(graph_df,aes(x=meta_to,y=distance,fill=meta_to))+
   geom_boxplot()
@@ -130,12 +143,12 @@ anova(anova_to)
 # is there difference for celltypes?
 graph_df$meta_both <- as.factor(unlist(graph_df$meta_both))
 ggplot(graph_df,aes(x=distance,fill=meta_both)) + 
-  geom_histogram(bins=100)+
+  geom_histogram(bins=100,alpha=0.9)+
   theme(legend.position = "none")
 
-ggplot(graph_df,aes(x=meta_both,y=distance,fill=meta_both))+
-  geom_boxplot()+
-  theme(legend.position = "none")
+ggplot(graph_df,aes(x=distance,fill=meta_both)) + 
+  geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
+  facet_grid(~meta_both)
 
 anova_both <- lm(distance ~ meta_both,graph_df)
 summary(anova_both)

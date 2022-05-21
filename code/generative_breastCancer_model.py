@@ -177,7 +177,7 @@ def generate_best_start(cells):
     else:
         return
     
-def generate_conv(cells):
+def generate_conv(cells,print_=False):
     '''
     update cell state according to transition matrix with interaction frequencies,
     using the whole spatial information
@@ -200,7 +200,8 @@ def generate_conv(cells):
         #if no moves possible from position x,y then search for new position
         if len(possible_moves) == 0:
             new_y,new_x = best_start(cells)
-            print(f"new start at: {new_y},{new_x}")
+            if print_:
+                print(f"new start at: {new_y},{new_x}")
             #if no moves possible with best_start we are finished
             if new_y == -1:
                 break
@@ -318,7 +319,7 @@ def best_start(cells):
    
     return new_y,new_x
     
-def new_start(cells):
+def new_start(cells,print_=False):
     open_pos = np.argwhere(cells.states==0)
     #todo:choose new start-point with neigbors to continue chain
     new_y,new_x = open_pos[np.random.randint(0,len(open_pos))]
@@ -348,8 +349,9 @@ def new_start(cells):
         pygame.time.delay(delay)
         pygame.draw.rect(cells.surface,cells.color[cells.states[y,x]-1],(cells.cellsize*x,cells.cellsize*y,cells.cellsize-1, cells.cellsize-1))
         pygame.display.update
-        
-    print(f"new start at: {x},{y} with state {last_state}")
+    
+    if print_:
+        print(f"new start at: {x},{y} with state {last_state}")
     return y,x,last_state
 
 def neighbors(cells,x,y):
@@ -383,7 +385,7 @@ def neighbors(cells,x,y):
     return states
 
 
-def generate_neighborhood(cells):
+def generate_neighborhood(cells,print_=False):
     '''
     Update Cell states all at once in discrete timesteps
 
@@ -471,14 +473,16 @@ def generate_neighborhood(cells):
                             return
                         else:
                             break
-        print(f"changes made: {counter}")
-        #if no more changes are happening
+        if print_:
+            print(f"changes made: {counter}")
+            #if no more changes are happening
         if not changes:
             print("converged")
             converging = False
         #no convergence after x iterations
         if iterations == 10:
-            print(f"no convergence after {iterations} iterations")
+            if print_:
+                print(f"no convergence after {iterations} iterations")
             converging = False
         iterations+=1
         
@@ -626,11 +630,33 @@ def generate(board,generate_func=generate_markov,plot=False):
 
     generate_func(board)
     if plot == True:
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 10))
         img = ax.imshow(board.states, cmap = cmap, origin = "lower")
         # img.colorbar(img,cmap=cmap,norm=norm, boundaries=bounds)
 
+        
+def interactions(cells_list,plot=False):
+    # create interaction matrix for board object
+    for cells in cells_list:
+        #create interaction dictionary
+        interaction = np.zeros_like(cells.transition_matrix)
+        for y,row in enumerate(cells.states):
+            for x,current_state in enumerate(row):
+                neig = neighbors(cells, x, y)
+                for s in neig:
+                    interaction[current_state-1,s-1] += 1
+    c1 = np.sum(interaction,axis=1)
+    c2 = np.sum(interaction,axis=0)
+    relative_interaction = (interaction.T / c1).T
+    relative_interaction = (relative_interaction/c2)
+    if plot == True:
+        fig, ax = plt.subplots(ncols=3, figsize=(30, 10))
+        cmap = cm.get_cmap(name='Reds')
+        ax[0].imshow(interaction, origin = "upper")
+        ax[1].imshow(relative_interaction, origin = "upper")
+        ax[2].imshow(cells.interactions, origin = "upper")
 
+    return interaction
 
 
 def main():
