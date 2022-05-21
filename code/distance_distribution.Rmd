@@ -1,0 +1,144 @@
+---
+title: "Distance distribution"
+author: "BrunoPalau"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+#Quantify Interaction distances between cells in breast cancer tissue to use it in generative model
+
+##import libraries and breast cancer single cell experiment
+```{r,include=FALSE}
+library(MASS)
+library(ComplexHeatmap)
+library(imcdatasets)
+library(imcRtools)
+library(Giotto)
+
+library(scales)
+library(ggplot2)
+
+sce <- JacksonFischer2020Data(data_type = "sce")
+```
+
+##subset and build spatial graph
+```{r}
+
+subset <- sce[,sce$ImageNb == 29]
+
+#use 8 neighbors to simulate nearest 8 neighbors on grid
+subset <- buildSpatialGraph(subset, img_id = "ImageNb",
+                            coords=c("Location_Center_X", "Location_Center_Y"),     
+                            type = "knn",
+                            k = 8)
+subset$metacluster <- as.factor(subset$metacluster)
+
+# take subset for visualization
+plotSpatial(subset,
+            img_id = "ImageNb",
+            coords=c("Location_Center_X", "Location_Center_Y"),
+            node_color_by = "metacluster",
+            draw_edges = TRUE,
+            colPairName = "knn_interaction_graph",
+            directed = FALSE,
+            nodes_first = FALSE)
+```
+
+```{r}
+raw_exprs <- assay(subset,"exprs")
+spatial_locs <- data.frame(x_location=subset$Location_Center_X,y_location=subset$Location_Center_Y)
+cell_metadata <- subset$CellType
+custom_expr <- assay(subset,"exprs")
+# create giotto-object
+giotto_object <- createGiottoObject(raw_exprs = raw_exprs,
+                                  spatial_locs = spatial_locs,
+                                  cell_metadata = cell_metadata,
+                                  custom_expr = custom_expr)
+```
+
+
+```{r}
+giotto_object = createSpatialKNNnetwork(giotto_object,k=8,name="knn_network")
+
+graph_df <- giotto_object@spatial_network$knn_network$networkDT
+```
+
+```{r}
+list_from <- list()
+list_to <- list()
+list_both <- list()
+
+for (i in 1:nrow(graph_df)){
+  row <- graph_df[i,]
+  name_from <- row$from
+  name_to <- row$to
+
+  meta_from <- subset[,subset$id==name_from]$metacluster
+  meta_to <- subset[,subset$id==name_to]$metacluster
+
+
+  list_from <- append(list_from,meta_from)
+  list_to <- append(list_to,meta_to)
+
+  both <- paste0(meta_from,"_",meta_to)
+  list_both <- append(list_both,both)
+}
+
+
+graph_df$meta_from <- as.vector(list_from)
+graph_df$meta_to <- as.vector(list_to)
+graph_df$meta_both<- as.vector(list_both)
+
+```
+
+```{r}
+# make plot for assumption on how distances between cells are distributed -> normally distributed, binomial distributed
+ggplot(graph_df,aes(x=distance)) + 
+  geom_histogram(bins=100)
+
+ggplot(graph_df,aes(x=distance)) + 
+  geom_histogram(bins=30)
+```
+
+```{r}
+# is there difference for celltypes?
+ggplot(graph_df,aes(x=distance,fill=meta_from)) + 
+  geom_histogram(bins=100)
+
+ggplot(graph_df,aes(x=meta_from,y=distance,fill=meta_from))+
+  geom_boxplot()
+
+anova_from <- lm(distance ~ meta_from,graph_df)
+summary(anova_from)
+anova(anova_from)
+```
+
+```{r}
+# to and from are different even tho undirected graph as knn not symmetrical
+ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
+  geom_histogram(bins=100)
+
+ggplot(graph_df,aes(x=meta_to,y=distance,fill=meta_to))+
+  geom_boxplot()
+
+anova_to <- lm(distance ~ meta_to,graph_df)
+summary(anova_to)
+anova(anova_to)
+```
+
+```{r}
+# is there difference for celltypes?
+graph_df$meta_both <- as.factor(unlist(graph_df$meta_both))
+ggplot(graph_df,aes(x=distance,fill=meta_both)) + 
+  geom_histogram(bins=100)+
+  theme(legend.position = "none")
+
+ggplot(graph_df,aes(x=meta_both,y=distance,fill=meta_both))+
+  geom_boxplot()+
+  theme(legend.position = "none")
+
+anova_both <- lm(distance ~ meta_both,graph_df)
+summary(anova_both)
+anova(anova_both)
+```
+
