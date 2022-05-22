@@ -111,7 +111,7 @@ ggplot(bins_df,aes(x=values))+
 
 
 ```
-```{r,fig.width = 12,fig.height=12}
+```{r,fig.width = 15,fig.height=12}
 # to binning analysis metacluster specific
 
 list_bins_res <- vector(mode="list",length = length(unique(sce$metacluster)))
@@ -121,7 +121,7 @@ for (img_nr in unique(sce$ImageNb)){
   for (metacluster in unique(image_sce$metacluster)){
     meta_sce <- image_sce[,image_sce$metacluster==metacluster]
     
-    bins <- bin2(cbind(meta_sce$Location_Center_X,meta_sce$Location_Center_Y),nbin=c(30,30))
+    bins <- bin2(cbind(meta_sce$Location_Center_X,meta_sce$Location_Center_Y),nbin=c(3,3))
     meta_bins <- c(bins$nc)
     
     list_bins_res[[metacluster]] <- c(list_bins_res[[metacluster]],meta_bins)
@@ -135,12 +135,10 @@ a <- lapply(seq_along(list_bins_res),function(i){
 })
 meta_cluster_vector <- unlist(a)
 
-df <- data.frame(bins_values = bins_res_vector, metacluster = meta_cluster_vector)
+df <- data.frame(bins_values = bins_res_vector, metacluster = as.factor(meta_cluster_vector))
 
-ggplot(df,aes(x=bins_values))+
-  geom_histogram(nbins=20)+
+ggplot(df,aes(x=bins_values,fill=metacluster))+
+  geom_histogram(nbins=10)+
   theme_bw()+
   facet_wrap(~metacluster)
-  
-
 ```
