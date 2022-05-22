@@ -47,10 +47,19 @@ plotSpatial(subset,
 ```
 
 ```{r}
-raw_exprs <- assay(subset,"exprs")
-spatial_locs <- data.frame(x_location=subset$Location_Center_X,y_location=subset$Location_Center_Y)
-cell_metadata <- subset$CellType
-custom_expr <- assay(subset,"exprs")
+# paste metacluster to cell id to extract after graph building with giotto
+
+new_cell_id <- paste0(sce$id,"/",sce$metacluster)
+colnames(sce) <- new_cell_id
+```
+
+
+```{r}
+# create one giotto object with whole dataset to use as storage of single networks
+raw_exprs <- assay(sce,"exprs")
+spatial_locs <- data.frame(x_location=sce$Location_Center_X,y_location=sce$Location_Center_Y)
+cell_metadata <- sce$metacluster
+custom_expr <- assay(sce,"exprs")
 # create giotto-object
 giotto_object <- createGiottoObject(raw_exprs = raw_exprs,
                                   spatial_locs = spatial_locs,
@@ -58,52 +67,54 @@ giotto_object <- createGiottoObject(raw_exprs = raw_exprs,
                                   custom_expr = custom_expr)
 ```
 
+```{r, include=FALSE}
+# compute graphs for each image independently 
+for (img_nr in unique(sce$ImageNb)){
+  # take cells of one image
+  cells <- sce[,sce$ImageNb==img_nr]
+    
+  # prepare giotto-object with cells
+  raw_exprs <- assay(cells,"exprs")
+  spatial_locs <- data.frame(x_location=cells$Location_Center_X,y_location=cells$Location_Center_Y)
+  cell_metadata <- cells$metacluster
+  custom_expr <- assay(cells,"exprs")
+  # create giotto-object
+  giotto_mini <- createGiottoObject(raw_exprs = raw_exprs,
+                                    spatial_locs = spatial_locs,
+                                    cell_metadata = cell_metadata,
+                                    custom_expr = custom_expr)
+
+  giotto_mini = createSpatialKNNnetwork(giotto_mini,k=8,name="knn_network")
+    
+  giotto_object@spatial_network$knn_network$networkDT <- rbind(giotto_object@spatial_network$knn_network$networkDT,
+                                                              giotto_mini@spatial_network$knn_network$networkDT)
+}
+
+
+```
 
 ```{r}
-giotto_object = createSpatialKNNnetwork(giotto_object,k=8,name="knn_network")
+# giotto_object = createSpatialKNNnetwork(giotto_object,k=8,name="knn_network")
 
 graph_df <- giotto_object@spatial_network$knn_network$networkDT
 ```
 
 ```{r}
-list_from <- list()
-list_to <- list()
-list_both <- list()
-
-for (i in 1:nrow(graph_df)){
-  row <- graph_df[i,]
-  name_from <- row$from
-  name_to <- row$to
-
-  meta_from <- subset[,subset$id==name_from]$metacluster
-  meta_to <- subset[,subset$id==name_to]$metacluster
-
-
-  list_from <- append(list_from,meta_from)
-  list_to <- append(list_to,meta_to)
-
-  both <- paste0(meta_from,"_",meta_to)
-  list_both <- append(list_both,both)
-}
-
-
-graph_df$meta_from <- as.vector(list_from)
-graph_df$meta_to <- as.vector(list_to)
-graph_df$meta_both<- as.vector(list_both)
+graph_df$meta_from <- sapply(strsplit(graph_df$from,"/"),"[[",2)
+graph_df$meta_to <- sapply(strsplit(graph_df$to,"/"),"[[",2)
+graph_df$meta_both <- paste0(sapply(strsplit(graph_df$from,"/"),"[[",2),"-",sapply(strsplit(graph_df$to,"/"),"[[",2))
 
 ```
 
+
 ```{r}
-# make plot for assumption on how distances between cells are distributed -> normally distributed, binomial distributed
+# make plot for assumption on how distances between cells are distributed -> normally distributed
 ggplot(graph_df,aes(x=distance)) + 
   geom_histogram(bins=100)
-# binomial distribution seems to come from 25, maybe 
 
-ggplot(graph_df,aes(x=distance)) + 
-  geom_histogram(bins=30)
 ```
 
-```{r}
+```{r,fig.width = 10,fig.height=10}
 
 # is there difference for celltypes?
 ggplot(graph_df,aes(x=distance,fill=meta_from)) + 
@@ -111,7 +122,7 @@ ggplot(graph_df,aes(x=distance,fill=meta_from)) +
 
 ggplot(graph_df,aes(x=distance,fill=meta_from)) + 
   geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
-  facet_grid(~meta_from)
+  facet_wrap(~meta_from)
 
 ggplot(graph_df,aes(x=meta_from,y=distance,fill=meta_from))+
   geom_boxplot()
@@ -121,7 +132,7 @@ summary(anova_from)
 anova(anova_from)
 ```
 
-```{r}
+``````{r,fig.width = 10,fig.height=10}
 
 # to and from are different even tho undirected graph as knn not symmetrical
 ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
@@ -129,7 +140,7 @@ ggplot(graph_df,aes(x=distance,fill=meta_to)) +
 
 ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
   geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
-  facet_grid(~meta_to)
+  facet_wrap(~meta_to)
 
 ggplot(graph_df,aes(x=meta_to,y=distance,fill=meta_to))+
   geom_boxplot()
@@ -140,6 +151,14 @@ anova(anova_to)
 ```
 
 ```{r}
+anova_comb <- lm(distance ~ meta_to + meta_from,graph_df)
+summary(anova_comb)
+anova(anova_comb)
+```
+
+
+```{r,fig.width = 10,fig.height=10}
+
 # is there difference for celltypes?
 graph_df$meta_both <- as.factor(unlist(graph_df$meta_both))
 ggplot(graph_df,aes(x=distance,fill=meta_both)) + 
@@ -148,10 +167,11 @@ ggplot(graph_df,aes(x=distance,fill=meta_both)) +
 
 ggplot(graph_df,aes(x=distance,fill=meta_both)) + 
   geom_density(alpha=0.8,lwd=0.8,adjust=0.5)+
-  facet_grid(~meta_both)
+  facet_wrap(~meta_both)
+
+
 
 anova_both <- lm(distance ~ meta_both,graph_df)
 summary(anova_both)
 anova(anova_both)
 ```
-

@@ -15,8 +15,9 @@ library(imcRtools)
 library(Giotto)
 
 library(dplyr)
-library(viridis)
+library(ash)
 
+library(viridis)
 library(scales)
 library(ggplot2)
 library(cowplot)
@@ -89,4 +90,57 @@ plot_grid(plotlist = list_meta_plot)
 
 # todo: get bins calculated and make histogram of that for multiple images in dataset
 # todo: make a colored version of this to see if one metacluster is overrepresented in 
+```
+
+```{r}
+# plot histogram of bin count on 2d to see if cells are clustered
+
+bins_vector <- c()
+for (img_nr in unique(sce$ImageNb)){
+  image_sce <- sce[,sce$ImageNb==img_nr]
+  bins <- bin2(cbind(image_sce$Location_Center_X,image_sce$Location_Center_Y),nbin=c(10,10))
+  bins_vector <- c(bins_vector,c(bins$nc))
+}
+
+bins_df <- data.frame(values = bins_vector)
+
+
+ggplot(bins_df,aes(x=values))+
+  geom_histogram(nbins=50)+
+  theme_bw()
+
+
+```
+```{r,fig.width = 12,fig.height=12}
+# to binning analysis metacluster specific
+
+list_bins_res <- vector(mode="list",length = length(unique(sce$metacluster)))
+bins_vector <- c()
+for (img_nr in unique(sce$ImageNb)){
+  image_sce <- sce[,sce$ImageNb==img_nr]
+  for (metacluster in unique(image_sce$metacluster)){
+    meta_sce <- image_sce[,image_sce$metacluster==metacluster]
+    
+    bins <- bin2(cbind(meta_sce$Location_Center_X,meta_sce$Location_Center_Y),nbin=c(30,30))
+    meta_bins <- c(bins$nc)
+    
+    list_bins_res[[metacluster]] <- c(list_bins_res[[metacluster]],meta_bins)
+  }
+}
+
+bins_res_vector <- unlist(list_bins_res)
+a <- lapply(seq_along(list_bins_res),function(i){
+  meta_seq <- rep(i,length(list_bins_res[[i]]))
+  return (meta_seq)
+})
+meta_cluster_vector <- unlist(a)
+
+df <- data.frame(bins_values = bins_res_vector, metacluster = meta_cluster_vector)
+
+ggplot(df,aes(x=bins_values))+
+  geom_histogram(nbins=20)+
+  theme_bw()+
+  facet_wrap(~metacluster)
+  
+
 ```
