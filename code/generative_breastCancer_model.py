@@ -480,7 +480,7 @@ def generate_neighborhood(cells,print_=False):
             print("converged")
             converging = False
         #no convergence after x iterations
-        if iterations == 10:
+        if iterations == 50:
             if print_:
                 print(f"no convergence after {iterations} iterations")
             converging = False
@@ -624,6 +624,7 @@ def animation(board,generate_func=generate_markov):
 
 
 def generate(board,generate_func=generate_markov,plot=False):
+    # todo: make one cell have possiblity to have multiple arrays
     cmap = colors.ListedColormap(colors_list)
     bounds=list(range(1,27))
     norm = colors.BoundaryNorm(bounds, cmap.N)
