@@ -19,6 +19,7 @@ library(viridis)
 
 library(scales)
 library(ggplot2)
+library(cowplot)
 
 sce <- JacksonFischer2020Data(data_type = "sce")
 ```
@@ -46,41 +47,45 @@ plotSpatial(subset,
             nodes_first = FALSE)
 ```
 
+
 ```{r}
-raw_exprs <- assay(subset,"exprs")
-spatial_locs <- data.frame(x_location=subset$Location_Center_X,y_location=subset$Location_Center_Y)
-cell_metadata <- subset$CellType
-custom_expr <- assay(subset,"exprs")
-# create giotto-object
-giotto_object <- createGiottoObject(raw_exprs = raw_exprs,
-                                  spatial_locs = spatial_locs,
-                                  cell_metadata = cell_metadata,
-                                  custom_expr = custom_expr)
+img_nr_list <- list(29,30,31)
+spatial_df_list <- list()
+for (img_nr in img_nr_list){
+  subset <- subset <- sce[,sce$ImageNb == img_nr]
+
+  spatial_df <- data.frame(x = subset$Location_Center_X, y = subset$Location_Center_Y, metacluster = subset$metacluster)
+  
+  spatial_df_list <- append(spatial_df_list,list(spatial_df))
+}
 ```
 
 
-```{r}
-giotto_object = createSpatialKNNnetwork(giotto_object,k=8,name="knn_network")
+```{r, fig.width = 20,fig.height=20}
+# spatial distribution seems to be binomial in the sense that it is either empty or 
+list_total_plot <- list()
+list_meta_plot <- list()
 
-graph_df <- giotto_object@spatial_network$knn_network$networkDT
+for (spatial_df in spatial_df_list){
+  total_plot <- ggplot(spatial_df,aes(x=x,y=y))+
+    geom_bin2d(bins=50)+
+    scale_fill_continuous(type="viridis")+
+    theme_bw()
+  
+  meta_plot <- ggplot(spatial_df,aes(x=x,y=y))+
+    geom_bin2d(bins=50)+
+    scale_fill_continuous(type="viridis")+
+    facet_wrap(~metacluster)+
+    theme_bw()
+  
+  list_total_plot <- append(list_total_plot,list(total_plot))
+  list_meta_plot <- append(list_meta_plot,list(meta_plot))
+}
 
-spatial_df <- data.frame(x = subset$Location_Center_X, y = subset$Location_Center_Y, metacluster = subset$metacluster)
-```
+plot_grid(plotlist = list_total_plot)
+plot_grid(plotlist = list_meta_plot)
 
-
-```{r}
-# spatial distribution seems to be binmial in the sense that it is either empty or 
-ggplot(spatial_df,aes(x=x,y=y))+
-  geom_bin2d(bins=50)+
-  scale_fill_continuous(type="viridis")+
-  theme_bw()
-
-ggplot(spatial_df,aes(x=x,y=y))+
-  geom_bin2d(bins=50)+
-  scale_fill_continuous(type="viridis")+
-  facet_wrap(~metacluster)+
-  theme_bw()
-# specially cluster 25 and 18 seems to have some kind of spatial distriburion
+# specially cluster 25 and 18 seems to have some kind of spatial distributions
 
 # todo: get bins calculated and make histogram of that for multiple images in dataset
 # todo: make a colored version of this to see if one metacluster is overrepresented in 
