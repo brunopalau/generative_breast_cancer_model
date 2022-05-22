@@ -1,0 +1,140 @@
+---
+title: "spatial location"
+author: "BrunoPalau"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Use the interaction matrix and the metacluster specific distance distribution to compute the spatial location of cells
+
+
+##import libraries and breast cancer single cell experiment
+```{r,include=FALSE}
+library(MASS)
+library(ComplexHeatmap)
+library(imcdatasets)
+library(imcRtools)
+# library(Giotto)
+library(reticulate)
+
+library(dplyr)
+
+library(scales)
+library(ggplot2)
+
+sce <- JacksonFischer2020Data(data_type = "sce")
+```
+
+
+## try to create a normal distribution
+```{python}
+from scipy.stats import multivariate_normal as mvn
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import cm
+import numpy as np
+
+# create multivariate normal distribution
+mu = np.array([0,0])
+cov = np.array([[1,0],[0,1]])
+# f = mvn(mu,cov)
+
+# create x and y meshgrid
+N = 200
+x = np.linspace(-10,10,N)
+y = np.linspace(-10,10,N)
+X, Y = np.meshgrid(x,y)
+
+# pack x and Y into a single 3d array
+pos = np.empty(X.shape + (2,))
+pos[:, :, 0] = X
+pos[:, :, 1] = Y
+
+f = mvn(mu)
+Z = f.pdf(pos)
+
+# plot multivariate normal distribution
+
+fig = plt.figure()
+ax = fig.gca(projection="3d")
+ax.plot_surface(X,Y,Z,cmap=cm.viridis)
+
+ax.view_init(27, -21)
+
+plt.show()
+```
+
+## create difference normal distribution
+
+```{python}
+# create new variance matrix
+cov2 = np.array([[4,0],[0,4]])
+# create new distribution
+f2 = mvn(mu,cov2)
+# compute new Z
+Z2 = f2.pdf(pos)
+# subtract mvn1 from mvn2
+Z3 = Z2 - Z
+# clip to 0 as no negative probability possible
+Z4 = Z3.clip(min=0)
+# normalize probability array
+Z4 = Z4/np.sum(Z4)
+
+
+
+# plot difference multivariate normal distribution
+
+fig = plt.figure()
+ax = fig.gca(projection="3d")
+ax.plot_surface(X,Y,Z4,cmap=cm.viridis)
+
+ax.view_init(30, -21)
+
+plt.show()
+
+# todo: 3d interactive visualization
+```
+## sampling from 2d probability density distribution
+```{python}
+# with numpy only 1d is possible, so we flatten the probablity array and the sample array (index of positions)
+
+flat_density = Z4.flatten()
+
+# sample x and y with given distribution
+sample_index = np.random.choice(flat_density.size,p=flat_density)
+
+# re-adjust to original array
+adjusted_index = np.unravel_index(sample_index,Z4.shape)
+
+# convert index into position on our grid
+pos = X[0,adjusted_index[0]],Y[adjusted_index[1],0]
+
+print(adjusted_index)
+print(pos)
+
+# visualize sample
+ax.plot(np.array([pos[0],pos[0]]),np.array([pos[1],pos[1]]),np.array([0,0.0004]),color="r",linewidth=1)
+
+plt.show()
+```
+# make sure sampling works by sampling and visualizing
+```{python}
+
+flat_density = Z4.flatten()
+
+# sample x and y with given distribution
+sample_index = np.random.choice(flat_density.size,p=flat_density,size=500000)
+
+
+# re-adjust to original array
+adjusted_index = np.array(np.unravel_index(sample_index,Z4.shape))
+
+# convert index into position on our grid
+pos = X[0,adjusted_index[0]],Y[adjusted_index[1],0]
+
+fig,ax2 = plt.subplots()
+ax2.hist2d(X[0,adjusted_index[0]],Y[adjusted_index[1],0],density=True,bins=[200,200])
+
+plt.show()
+
+# todo: why grid like structure?
+```
