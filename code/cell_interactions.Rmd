@@ -95,5 +95,6 @@ total_frq <- proportions(table(sce$metacluster))
 total_freq <- as.matrix(total_frq)
 write.matrix(total_freq, file="/Users/bp/data/cellular_automata_bio394/total_freq.csv",sep=",")
 
-
+rownames(total_freq) <- meta_clusters_name
+Heatmap(total_freq, cluster_rows = FALSE, cluster_columns = FALSE,column_title = "Total frequency per metacluster")
 ```
