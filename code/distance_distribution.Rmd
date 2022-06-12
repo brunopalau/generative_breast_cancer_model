@@ -16,6 +16,7 @@ library(imcRtools)
 library(Giotto)
 
 library(dplyr)
+library(tibble)
 
 library(scales)
 library(ggplot2)
@@ -132,7 +133,34 @@ summary(anova_from)
 anova(anova_from)
 ```
 
-``````{r,fig.width = 10,fig.height=10}
+```{r}
+d <- as.data.frame(summary(anova_from)$coef)
+
+export_df <- d%>%
+  select(Estimate,"Std. Error")
+
+# change name of intercept
+names <- rownames(export_df)
+names[1] <- "1"
+rownames(export_df) <- names
+rownames(export_df) <- sub(".*from","",rownames(export_df))
+
+# add intercept to value of all others
+export_df$Estimate[2:length(export_df$Estimate)] <- sapply(export_df$Estimate[2:length(export_df$Estimate)],function(x){
+  return (export_df$Estimate[[1]] + x)
+})
+
+export_df<- rownames_to_column(export_df,var="metacluster")
+export_df_ordered <- export_df[order(as.numeric(export_df$metacluster)),]
+
+
+# save df
+write.csv(export_df_ordered,"/Users/bp/data/cellular_automata_bio394/distance_matrix.csv",row.names = FALSE)
+
+```
+
+
+```{r,fig.width = 10,fig.height=10}
 
 # to and from are different even tho undirected graph as knn not symmetrical
 ggplot(graph_df,aes(x=distance,fill=meta_to)) + 
